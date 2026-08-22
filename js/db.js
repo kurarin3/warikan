@@ -1,12 +1,31 @@
-import { firebaseConfig } from "./config.js";
+import { firebaseConfig, appCheckConfig } from "./config.js";
 import {
   initializeApp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  initializeAppCheck, ReCaptchaV3Provider, ReCaptchaEnterpriseProvider
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js";
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const app = initializeApp(firebaseConfig);
+
+// App Check は他のサービスより先に初期化する。siteKey が未設定なら何もしない。
+if (appCheckConfig.siteKey) {
+  // ローカル開発では reCAPTCHA を通せないので、デバッグトークンを使う。
+  // 本番で有効にすると誰でも通過できてしまうため、localhost のときだけにする。
+  if (["localhost", "127.0.0.1"].includes(location.hostname)) {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+  initializeAppCheck(app, {
+    provider: appCheckConfig.provider === "enterprise"
+      ? new ReCaptchaEnterpriseProvider(appCheckConfig.siteKey)
+      : new ReCaptchaV3Provider(appCheckConfig.siteKey),
+    isTokenAutoRefreshEnabled: true
+  });
+}
+
 const db = getDatabase(app);
 
 const roomRef = (roomId, ...path) => ref(db, ["rooms", roomId, ...path].join("/"));

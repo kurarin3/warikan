@@ -44,7 +44,29 @@
 正しく入ったかどうかは、ルールエディタの **シミュレータ**（ルールプレイグラウンド）で
 `/rooms/abc` の読み取りが許可、`/rooms` の読み取りが拒否になることで確認できます。
 
-### 4. 動かす
+### 4. App Check を有効にする（任意）
+
+App Check は、あなたのサイト以外からデータベースを叩かれるのを防ぐ仕組みです。
+`js/config.js` の `appCheckConfig.siteKey` が空の間は使われないので、後から有効化できます。
+
+1. [reCAPTCHA の管理画面](https://www.google.com/recaptcha/admin) で **v3** のキーを作る
+   - ドメインに `kurarin3.github.io` を登録する
+   - 表示される **サイトキー** と **シークレットキー** を控える
+2. Firebase コンソール → **構築 → App Check** → 「アプリ」タブでウェブアプリを選び、
+   **reCAPTCHA v3** で登録して、手順 1 のシークレットキーを貼り付ける
+3. 手順 1 の **サイトキー** を `js/config.js` の `appCheckConfig.siteKey` に貼り付ける
+   （reCAPTCHA Enterprise で登録した場合は `provider` を `"enterprise"` にする）
+4. App Check の「API」タブで **Realtime Database** を選び、まず **監視モード** で有効にする
+5. 数日おいて、リクエストが「検証済み」として集計されていることを確認してから **適用** に切り替える
+
+**いきなり「適用」にしないでください。** 設定に不備があると自分のアプリからも接続できなくなります。
+監視モードで実際のリクエストが検証済みになることを見てから切り替えるのが安全です。
+
+ローカル開発（`localhost`）では reCAPTCHA を通せないため、自動でデバッグトークンモードになります。
+ブラウザのコンソールに出力されるトークンを、App Check の「アプリ」タブ →
+対象アプリの ⋮ → **デバッグトークンを管理** に登録してください。
+
+### 5. 動かす
 
 ES Modules と Web Crypto を使うため、ファイルを直接開く（`file://`）のではなく HTTP で配信してください。
 
@@ -82,7 +104,7 @@ python -m http.server 8000
 ```
 index.html            画面（ロビー / パスワード入力 / ルーム）
 css/style.css         スタイル（ライト・ダークの両対応）
-js/config.js          Firebase の設定値（要編集）
+js/config.js          Firebase と App Check の設定値（要編集）
 js/db.js              Realtime Database の読み書き
 js/storage.js         localStorage（ルーム履歴・入室状態）
 js/calc.js            割り勘と精算の計算

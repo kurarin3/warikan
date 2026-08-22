@@ -20,5 +20,18 @@ export const firebaseConfig = {
   measurementId: "G-JP80H2WM58"
 };
 
+// ---------------------------------------------------------------------------
+// App Check（不正なクライアントからのアクセスを遮断する仕組み）の設定。
+// siteKey が空の間は App Check を使わずに動作するので、後から有効化できます。
+//
+// Firebase コンソール → 構築 → App Check → アプリを登録 で表示される
+// reCAPTCHA の「サイトキー」を siteKey に貼り付けてください。
+// provider は登録時に選んだ種類に合わせます（"v3" または "enterprise"）。
+// ---------------------------------------------------------------------------
+export const appCheckConfig = {
+  siteKey: "",
+  provider: "v3"
+};
+
 export const isConfigured = () =>
   Boolean(firebaseConfig.apiKey && firebaseConfig.databaseURL);
