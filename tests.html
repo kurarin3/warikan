@@ -51,6 +51,40 @@ eq("mixed transfers settle everyone",
 const bal4 = computeBalances([{amount:100, payers:{ghost:100}, shares:{a:100}}], ["a"]);
 eq("unknown member included", Object.keys(bal4).sort(), ["a","ghost"]);
 
+// --- 精算送金 ---
+const items5 = [{ amount: 20000, payers: {a:8000,b:5000,c:4000,d:3000}, shares: splitEqually(20000,["a","b","c","d"]) }];
+const bal5 = computeBalances(items5, ["a","b","c","d"], []);
+eq("送金前の残り", settle(bal5), [{from:"d",to:"a",amount:2000},{from:"c",to:"a",amount:1000}]);
+
+// 一部だけ送金した
+const bal6 = computeBalances(items5, ["a","b","c","d"], [{from:"d",to:"a",amount:2000}]);
+eq("送金1件ぶん差し引かれる", Object.fromEntries(Object.values(bal6).map(r=>[r.id,r.balance])),
+   {a:1000,b:0,c:-1000,d:0});
+eq("残りの送金だけになる", settle(bal6), [{from:"c",to:"a",amount:1000}]);
+
+// 全部送金した
+const bal7 = computeBalances(items5, ["a","b","c","d"],
+  [{from:"d",to:"a",amount:2000},{from:"c",to:"a",amount:1000}]);
+eq("全額送金で残高ゼロ", Object.values(bal7).every(r=>r.balance===0), true);
+eq("全額送金で送金案なし", settle(bal7), []);
+
+// 端数を分けて送金しても最後は合う
+const bal8 = computeBalances(items5, ["a","b","c","d"],
+  [{from:"d",to:"a",amount:500},{from:"d",to:"a",amount:1500},{from:"c",to:"a",amount:1000}]);
+eq("分割送金でも残高ゼロ", Object.values(bal8).every(r=>r.balance===0), true);
+
+// 渡しすぎた場合は逆向きの送金案が出る
+const bal9 = computeBalances(items5, ["a","b","c","d"], [{from:"d",to:"a",amount:5000}]);
+eq("渡しすぎたら逆向きになる", settle(bal9).some(t=>t.from==="a"&&t.to==="d"), true);
+eq("渡しすぎても合計はゼロ", Object.values(bal9).reduce((s,r)=>s+r.balance,0), 0);
+
+// 送金の内訳が記録される
+eq("送金の内訳", [bal6.d.sentBack, bal6.a.receivedBack, bal6.d.balance], [2000, 2000, 0]);
+
+// 項目がなく送金だけでも壊れない
+const bal10 = computeBalances([], ["a","b"], [{from:"a",to:"b",amount:300}]);
+eq("項目なし送金のみ", Object.fromEntries(Object.values(bal10).map(r=>[r.id,r.balance])), {a:300,b:-300});
+
 eq("yen format", yen(1234567), "¥1,234,567");
 eq("no transfers when settled", settle(computeBalances([{amount:100,payers:{a:100},shares:{a:100}}],["a"])), []);
 

@@ -15,27 +15,41 @@ export function splitEqually(total, memberIds) {
   return out;
 }
 
-/** 項目リストから「支払った額 / 負担した額 / 差引」をメンバーごとに集計する。 */
-export function computeBalances(items, memberIds) {
+/**
+ * 項目と精算送金から、メンバーごとの収支を集計する。
+ *
+ *   balance = 立て替えた額 - 負担すべき額 + 精算で渡した額 - 精算で受け取った額
+ *
+ * balance が 0 なら、そのメンバーの精算は済んでいる。
+ */
+export function computeBalances(items, memberIds, payments = []) {
   const ids = new Set(memberIds);
   for (const item of items) {
     Object.keys(item.payers || {}).forEach((id) => ids.add(id));
     Object.keys(item.shares || {}).forEach((id) => ids.add(id));
   }
-
-  const rows = {};
-  for (const id of ids) rows[id] = { id, paid: 0, owed: 0, balance: 0 };
-
-  for (const item of items) {
-    for (const [id, amt] of Object.entries(item.payers || {})) {
-      rows[id].paid += amt;
-    }
-    for (const [id, amt] of Object.entries(item.shares || {})) {
-      rows[id].owed += amt;
-    }
+  for (const payment of payments) {
+    ids.add(payment.from);
+    ids.add(payment.to);
   }
 
-  for (const row of Object.values(rows)) row.balance = row.paid - row.owed;
+  const rows = {};
+  for (const id of ids) {
+    rows[id] = { id, paid: 0, owed: 0, sentBack: 0, receivedBack: 0, balance: 0 };
+  }
+
+  for (const item of items) {
+    for (const [id, amt] of Object.entries(item.payers || {})) rows[id].paid += amt;
+    for (const [id, amt] of Object.entries(item.shares || {})) rows[id].owed += amt;
+  }
+  for (const payment of payments) {
+    rows[payment.from].sentBack += payment.amount;
+    rows[payment.to].receivedBack += payment.amount;
+  }
+
+  for (const row of Object.values(rows)) {
+    row.balance = row.paid - row.owed + row.sentBack - row.receivedBack;
+  }
   return rows;
 }
 

@@ -195,8 +195,18 @@
             <span class="muted small" id="settle-scope"></span>
           </div>
           <div id="balance-list"></div>
-          <h3 class="sub">送金のしかた</h3>
+
+          <div class="sub-head">
+            <h3 class="sub">残りの送金</h3>
+            <button type="button" class="ghost small" id="btn-add-payment">手動で記録</button>
+          </div>
           <div id="transfer-list"></div>
+
+          <div class="sub-head">
+            <h3 class="sub">送金の記録</h3>
+            <span class="muted small" id="payment-summary"></span>
+          </div>
+          <div id="payment-list"></div>
         </div>
       </div>
     </div>
@@ -239,6 +249,43 @@
   <div class="dlg-actions">
     <button type="button" class="ghost" data-close>閉じる</button>
   </div>
+</dialog>
+
+<!-- 送金の記録 --------------------------------------------------------------->
+<dialog id="dlg-payment">
+  <h2>送金を記録</h2>
+  <p class="muted small">実際に受け渡した金額を記録します。残りの送金額から差し引かれます。</p>
+  <form id="payment-form" class="stack">
+    <div class="row">
+      <label class="field grow">
+        <span>渡した人</span>
+        <select id="pay-from"></select>
+      </label>
+      <label class="field grow">
+        <span>受け取った人</span>
+        <select id="pay-to"></select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="field grow">
+        <span>金額</span>
+        <input id="pay-amount" type="number" min="1" step="1" inputmode="numeric" placeholder="0" required>
+      </label>
+      <label class="field">
+        <span>日付</span>
+        <input id="pay-date" type="date" required>
+      </label>
+    </div>
+    <label class="field">
+      <span>メモ（任意）</span>
+      <input id="pay-note" type="text" maxlength="60" placeholder="例：現金で手渡し、PayPay">
+    </label>
+    <p class="error" id="payment-error" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" class="ghost" data-close>キャンセル</button>
+      <button type="submit" class="primary">記録する</button>
+    </div>
+  </form>
 </dialog>
 
 <div id="toast" class="toast" hidden></div>

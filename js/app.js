@@ -59,6 +59,7 @@ const state = {
   roomName: "",
   members: [],
   items: [],
+  payments: [],
   selectedDate: ALL,
   unsubscribe: null
 };
@@ -279,6 +280,10 @@ function openRoom(db) {
         .map(([id, item]) => ({ id, ...item }))
         .sort((a, b) =>
           a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      state.payments = Object.entries(data.payments || {})
+        .map(([id, payment]) => ({ id, ...payment }))
+        .sort((a, b) =>
+          a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
       local.rememberRoom(state.roomId, state.roomName);
       syncFormWithMembers();
@@ -303,7 +308,7 @@ function renderAll(db) {
   if (formSig() !== formSignature) renderForm(db);
   else refreshTotals();
   renderItems(db);
-  renderSettlement();
+  renderSettlement(db);
   renderMemberAdmin(db);
 }
 
@@ -314,10 +319,19 @@ function visibleItems() {
     : state.items.filter((item) => item.date === state.selectedDate);
 }
 
+function visiblePayments() {
+  return state.selectedDate === ALL
+    ? state.payments
+    : state.payments.filter((payment) => payment.date === state.selectedDate);
+}
+
 function renderDatebar(db) {
   const counts = new Map();
   for (const item of state.items) {
     counts.set(item.date, (counts.get(item.date) ?? 0) + 1);
+  }
+  for (const payment of state.payments) {
+    if (!counts.has(payment.date)) counts.set(payment.date, 0);
   }
   if (state.selectedDate !== ALL && !counts.has(state.selectedDate)) {
     counts.set(state.selectedDate, 0);
@@ -583,6 +597,35 @@ function wireRoom(db) {
     }
   });
 
+  $("#btn-add-payment").addEventListener("click", () => openPaymentDialog(db));
+
+  $("#payment-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = $("#payment-error");
+    error.hidden = true;
+    const from = $("#pay-from").value;
+    const to = $("#pay-to").value;
+    const amount = toInt($("#pay-amount").value);
+    const date = $("#pay-date").value;
+    const note = $("#pay-note").value.trim();
+
+    const fail = (message) => { error.textContent = message; error.hidden = false; };
+    if (!from || !to) return fail("メンバーを選んでください。");
+    if (from === to) return fail("渡した人と受け取った人が同じです。");
+    if (amount <= 0) return fail("金額を入力してください。");
+    if (!date) return fail("日付を選んでください。");
+
+    // 書き込みの完了を待ってから閉じると、応答が返るまで操作できない時間ができる。
+    // 入力の検証は済んでいるので先に閉じ、失敗したときだけ知らせる。
+    $("#dlg-payment").close();
+    try {
+      await db.addPayment(state.roomId, { from, to, amount, date, ...(note ? { note } : {}) });
+      toast("送金を記録しました");
+    } catch (err) {
+      toast(`記録できませんでした：${err.message}`);
+    }
+  });
+
   $("#share-pass-save").addEventListener("click", async () => {
     const password = $("#share-pass").value.trim();
     if (!/^\d{4}$/.test(password)) { toast("4 桁の数字を入力してください"); return; }
@@ -731,20 +774,23 @@ function renderItems(db) {
 }
 
 // --- 精算 ------------------------------------------------------------------
-function renderSettlement() {
+function renderSettlement(db) {
   const items = visibleItems();
+  const payments = visiblePayments();
   $("#settle-scope").textContent =
     state.selectedDate === ALL ? "全期間" : `${formatDate(state.selectedDate)} のみ`;
 
-  const rows = computeBalances(items, state.members.map((m) => m.id));
+  const rows = computeBalances(items, state.members.map((m) => m.id), payments);
   const ordered = state.members
     .map((m) => rows[m.id])
     .filter(Boolean)
     .concat(Object.values(rows).filter((r) => !state.members.some((m) => m.id === r.id)));
 
-  if (!items.length) {
+  if (!items.length && !payments.length) {
     $("#balance-list").replaceChildren(h("p", { class: "empty" }, "項目がありません"));
     $("#transfer-list").replaceChildren(h("p", { class: "empty" }, "—"));
+    $("#payment-list").replaceChildren(h("p", { class: "empty" }, "—"));
+    $("#payment-summary").textContent = "";
     return;
   }
 
@@ -752,10 +798,14 @@ function renderSettlement() {
     const sign = row.balance > 0 ? "plus" : row.balance < 0 ? "minus" : "";
     const label = row.balance > 0 ? `+${yen(row.balance)}`
       : row.balance < 0 ? `-${yen(-row.balance)}` : yen(0);
+    const settled = row.sentBack || row.receivedBack
+      ? ` ・ 精算 ${row.sentBack ? `+${yen(row.sentBack)}` : ""}${row.sentBack && row.receivedBack ? " / " : ""}${row.receivedBack ? `-${yen(row.receivedBack)}` : ""}`
+      : "";
     return h("div", { class: "bal" },
       h("span", { class: "who" }, memberName(row.id)),
       h("span", { class: `amt ${sign}` }, label),
-      h("span", { class: "detail" }, `支払い ${yen(row.paid)} ・ 負担 ${yen(row.owed)}`));
+      h("span", { class: "detail" },
+        `支払い ${yen(row.paid)} ・ 負担 ${yen(row.owed)}${settled}`));
   }));
 
   const transfers = settle(rows);
@@ -766,9 +816,57 @@ function renderSettlement() {
             h("span", {}, memberName(tx.from)),
             h("span", { class: "arrow" }, "→"),
             h("span", {}, memberName(tx.to)),
-            h("span", { class: "amt" }, yen(tx.amount))))
-      : [h("p", { class: "empty" }, "精算は完了しています 🎉")])
+            h("span", { class: "amt" }, yen(tx.amount)),
+            h("button", {
+              type: "button", class: "done",
+              onclick: () => openPaymentDialog(db, tx)
+            }, "送金済みにする")))
+      : [h("p", { class: "settled-note" },
+          payments.length ? "精算は完了しています 🎉" : "精算の必要はありません")])
   );
+
+  const total = payments.reduce((a, p) => a + p.amount, 0);
+  $("#payment-summary").textContent = payments.length
+    ? `${payments.length}件 ・ 合計 ${yen(total)}` : "";
+  $("#payment-list").replaceChildren(
+    ...(payments.length
+      ? payments.map((payment) =>
+          h("div", { class: "pay" },
+            h("span", { class: "when" }, formatDate(payment.date)),
+            h("span", { class: "who" }, memberName(payment.from)),
+            h("span", { class: "arrow" }, "→"),
+            h("span", { class: "who" }, memberName(payment.to)),
+            payment.note ? h("span", { class: "note" }, payment.note) : null,
+            h("span", { class: "amt" }, yen(payment.amount)),
+            h("button", {
+              class: "icon danger", type: "button",
+              onclick: async () => {
+                const label = `${memberName(payment.from)} → ${memberName(payment.to)} ${yen(payment.amount)}`;
+                if (!confirm(`送金の記録「${label}」を取り消しますか？`)) return;
+                await db.removePayment(state.roomId, payment.id);
+                toast("記録を取り消しました");
+              }
+            }, "取り消し")))
+      : [h("p", { class: "empty" }, "まだ送金の記録はありません")])
+  );
+}
+
+/** 送金記録ダイアログを開く。tx を渡すとその内容で埋める。 */
+function openPaymentDialog(db, tx = null) {
+  void db;
+  const options = (selectedId) =>
+    state.members.map((m) =>
+      h("option", { value: m.id, selected: m.id === selectedId }, m.name));
+
+  $("#pay-from").replaceChildren(...options(tx?.from ?? state.members[0]?.id));
+  $("#pay-to").replaceChildren(...options(tx?.to ?? state.members[1]?.id));
+  $("#pay-amount").value = tx ? String(tx.amount) : "";
+  $("#pay-date").value = state.selectedDate === ALL ? todayStr() : state.selectedDate;
+  $("#pay-note").value = "";
+  $("#payment-error").hidden = true;
+  const dialog = $("#dlg-payment");
+  if (dialog.open) dialog.close(); // 開いたまま showModal を呼ぶと例外になる
+  dialog.showModal();
 }
 
 // --- メンバー管理 ----------------------------------------------------------

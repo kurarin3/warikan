@@ -108,3 +108,9 @@ export const updateItem = (roomId, itemId, item) =>
 
 export const removeItem = (roomId, itemId) =>
   remove(roomRef(roomId, "items", itemId));
+
+export const addPayment = (roomId, payment) =>
+  set(push(roomRef(roomId, "payments")), { ...payment, createdAt: serverTimestamp() });
+
+export const removePayment = (roomId, paymentId) =>
+  remove(roomRef(roomId, "payments", paymentId));
