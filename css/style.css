@@ -31,6 +31,11 @@
 
 * { box-sizing: border-box; }
 
+/* hidden 属性はブラウザ標準の [hidden]{display:none} で効くが、
+   クラス指定の display（.screen.center の grid など）のほうが詳細度が高く
+   打ち消してしまう。属性が付いていれば必ず消えるようにしておく。 */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
