@@ -12,12 +12,18 @@ import {
 const app = initializeApp(firebaseConfig);
 
 // App Check は他のサービスより先に初期化する。siteKey が未設定なら何もしない。
-if (appCheckConfig.siteKey) {
-  // ローカル開発では reCAPTCHA を通せないので、デバッグトークンを使う。
-  // 本番で有効にすると誰でも通過できてしまうため、localhost のときだけにする。
-  if (["localhost", "127.0.0.1"].includes(location.hostname)) {
-    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-  }
+//
+// localhost では reCAPTCHA を通せないため、既定では App Check を使わない。
+// 有効なトークンを取れないと、読み書きがエラーにもならず止まってしまうため。
+// ローカルで App Check の動作を試したいときは ?appcheck=1 を付けて開く
+// （Firebase コンソールにデバッグトークンを登録しておく必要がある）。
+const isLocalhost = ["localhost", "127.0.0.1"].includes(location.hostname);
+const useAppCheck = Boolean(appCheckConfig.siteKey) &&
+  (!isLocalhost || new URLSearchParams(location.search).has("appcheck"));
+
+if (useAppCheck) {
+  // デバッグトークンは本番で有効にすると誰でも通過できてしまうので localhost 限定。
+  if (isLocalhost) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   initializeAppCheck(app, {
     provider: appCheckConfig.provider === "enterprise"
       ? new ReCaptchaEnterpriseProvider(appCheckConfig.siteKey)
