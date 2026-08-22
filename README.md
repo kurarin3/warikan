@@ -3,6 +3,8 @@
 メンバー・日付ごとに立て替えをまとめて、精算額と送金方法を自動計算するアプリです。
 ビルド不要の静的サイト（HTML / CSS / ES Modules）で、データは Firebase Realtime Database に保存します。
 
+公開先: <https://kurarin3.github.io/warikan/>
+
 ## 参考にしたアプリからの主な変更点
 
 | 変更点 | 実装 |
@@ -52,6 +54,7 @@ python -m http.server 8000
 ```
 
 公開するときは、このディレクトリをそのまま GitHub Pages などの静的ホスティングに置くだけです。
+`main` ブランチに push すると GitHub Pages が自動で更新されます（反映まで 1 分ほどかかります）。
 
 ## 使い方
 
