@@ -19,6 +19,9 @@
     <p class="muted">Firebase が表示するスニペットには <code>databaseURL</code> が含まれないことがあります。
       Realtime Database の「データ」タブに出ている URL
       （<code>https://…-default-rtdb.firebaseio.com</code> など）を手で追記してください。</p>
+    <p class="error" id="setup-detail"></p>
+    <p class="hint" id="setup-hint">この画面がキャッシュのせいで出ている場合は、
+      スーパーリロード（Windows は Ctrl+Shift+R）を試してください。</p>
   </div>
 </section>
 
@@ -239,6 +242,7 @@
 </dialog>
 
 <div id="toast" class="toast" hidden></div>
+<div id="fatal" class="fatal" hidden></div>
 
 <script type="module" src="js/app.js"></script>
 </body>

@@ -1,4 +1,4 @@
-import { isConfigured } from "./config.js";
+import { firebaseConfig, isConfigured } from "./config.js";
 import { splitEqually, computeBalances, settle, sum, yen } from "./calc.js";
 import * as local from "./storage.js";
 
@@ -79,7 +79,22 @@ const memberName = (id) =>
 // ===========================================================================
 // 起動
 // ===========================================================================
+// 開発者ツールを開けない端末でも原因が分かるように、致命的なエラーは画面に出す。
+function showFatal(detail) {
+  const box = $("#fatal");
+  if (!box) return;
+  box.textContent = `エラー: ${detail}`;
+  box.hidden = false;
+}
+window.addEventListener("error", (event) =>
+  showFatal(`${event.message}（${event.filename}:${event.lineno}）`));
+window.addEventListener("unhandledrejection", (event) =>
+  showFatal(String(event.reason?.message ?? event.reason)));
+
 if (!isConfigured()) {
+  const missing = ["apiKey", "databaseURL"].filter((k) => !firebaseConfig[k]);
+  $("#setup-detail").textContent =
+    `未設定の項目: ${missing.join(", ")} ／ 読み込んだファイル: ${new URL("./config.js", import.meta.url).href}`;
   show("screen-setup");
 } else {
   const db = await import("./db.js");
