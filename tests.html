@@ -1,0 +1,59 @@
+<!doctype html><html><head><meta charset="utf-8"><title>calc tests</title></head>
+<body><pre id="out">running</pre>
+<script type="module">
+import { splitEqually, computeBalances, settle, sum, yen } from "./js/calc.js";
+const log = [];
+let failed = 0;
+const norm = (v) => (v && typeof v === "object" && !Array.isArray(v))
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, norm(v[k])])) : v;
+const eq = (name, got, want) => {
+  const ok = JSON.stringify(norm(got)) === JSON.stringify(norm(want));
+  if (!ok) failed++;
+  log.push(`${ok ? "PASS" : "FAIL"} ${name}` + (ok ? "" : `\n   got  ${JSON.stringify(got)}\n   want ${JSON.stringify(want)}`));
+};
+
+eq("equal split exact", splitEqually(1000, ["a","b"]), {a:500,b:500});
+eq("equal split remainder", splitEqually(1000, ["a","b","c"]), {a:334,b:333,c:333});
+eq("equal split sums to total", sum(splitEqually(9999, ["a","b","c","d","e","f","g"])), 9999);
+eq("equal split empty", splitEqually(1000, []), {});
+
+// 4人で20000円。実際の支払いはバラバラ、負担は均等割。
+const items1 = [{
+  title:"dinner", date:"2026-08-22", amount:20000,
+  payers:{a:8000,b:5000,c:4000,d:3000},
+  shares:splitEqually(20000,["a","b","c","d"])
+}];
+const bal1 = computeBalances(items1, ["a","b","c","d"]);
+eq("balances 4-payer", Object.fromEntries(Object.values(bal1).map(r=>[r.id,r.balance])),
+   {a:3000,b:0,c:-1000,d:-2000});
+eq("balances sum to zero", Object.values(bal1).reduce((s,r)=>s+r.balance,0), 0);
+eq("transfers 4-payer", settle(bal1), [{from:"d",to:"a",amount:2000},{from:"c",to:"a",amount:1000}]);
+
+// 対象メンバーを一部だけにした場合
+const items2 = [{amount:3000, payers:{a:3000}, shares:{b:1500,c:1500}}];
+const bal2 = computeBalances(items2, ["a","b","c","d"]);
+eq("partial participants", Object.fromEntries(Object.values(bal2).map(r=>[r.id,r.balance])),
+   {a:3000,b:-1500,c:-1500,d:0});
+eq("partial transfers", settle(bal2), [{from:"b",to:"a",amount:1500},{from:"c",to:"a",amount:1500}]);
+
+// 個別指定の負担額
+const items3 = [
+  {amount:10000, payers:{a:10000}, shares:{a:1000,b:2000,c:3000,d:4000}},
+  {amount:4000,  payers:{b:2000,c:2000}, shares:splitEqually(4000,["a","b","c","d"])}
+];
+const bal3 = computeBalances(items3, ["a","b","c","d"]);
+eq("mixed balances sum to zero", Object.values(bal3).reduce((s,r)=>s+r.balance,0), 0);
+eq("mixed transfers settle everyone",
+   settle(bal3).reduce((m,t)=>{m[t.from]=(m[t.from]||0)-t.amount;m[t.to]=(m[t.to]||0)+t.amount;return m;},{}),
+   Object.fromEntries(Object.values(bal3).filter(r=>r.balance!==0).map(r=>[r.id,r.balance])));
+
+// 削除されたメンバーが項目に残っていても集計に現れる
+const bal4 = computeBalances([{amount:100, payers:{ghost:100}, shares:{a:100}}], ["a"]);
+eq("unknown member included", Object.keys(bal4).sort(), ["a","ghost"]);
+
+eq("yen format", yen(1234567), "¥1,234,567");
+eq("no transfers when settled", settle(computeBalances([{amount:100,payers:{a:100},shares:{a:100}}],["a"])), []);
+
+document.title = failed ? `FAILED ${failed}` : "ALL PASS";
+document.getElementById("out").textContent = log.join("\n") + `\n\n${failed ? failed + " FAILED" : "ALL PASS"}`;
+</script></body></html>

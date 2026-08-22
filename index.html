@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#3b6ef5">
+<title>わりかん</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- 未設定のとき ------------------------------------------------------------->
+<section id="screen-setup" class="screen center" hidden>
+  <div class="card narrow">
+    <h1>セットアップが必要です</h1>
+    <p class="muted">Firebase の設定値が入っていません。<code>js/config.js</code> を開いて、
+      Firebase コンソールで取得した <code>firebaseConfig</code> を貼り付けてください。</p>
+    <p class="muted">Realtime Database のルールには、同梱の <code>database.rules.json</code> を設定してください。</p>
+    <p class="muted">Firebase が表示するスニペットには <code>databaseURL</code> が含まれないことがあります。
+      Realtime Database の「データ」タブに出ている URL
+      （<code>https://…-default-rtdb.firebaseio.com</code> など）を手で追記してください。</p>
+  </div>
+</section>
+
+<!-- ルーム一覧・作成 --------------------------------------------------------->
+<section id="screen-lobby" class="screen" hidden>
+  <div class="wrap narrow">
+    <header class="hero">
+      <h1>わりかん</h1>
+      <p class="muted">メンバーと日付ごとに、立て替えと精算をまとめて管理します。</p>
+    </header>
+
+    <div class="card">
+      <h2>ルームを作る</h2>
+      <form id="create-form" class="stack">
+        <label class="field">
+          <span>ルーム名</span>
+          <input id="create-name" type="text" maxlength="60" placeholder="例：沖縄旅行 2026" required>
+        </label>
+        <label class="field">
+          <span>メンバー（カンマまたは改行区切り）</span>
+          <textarea id="create-members" rows="3" placeholder="ゆうき, さくら, たける, みなと"></textarea>
+        </label>
+        <label class="field">
+          <span>入室パスワード（4桁）</span>
+          <div class="inline">
+            <input id="create-pass" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required>
+            <button type="button" class="ghost" id="create-pass-regen">再生成</button>
+          </div>
+        </label>
+        <button type="submit" class="primary">ルームを作成</button>
+        <p class="error" id="create-error" hidden></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>ルームに入る</h2>
+      <form id="join-form" class="stack">
+        <label class="field">
+          <span>ルーム ID または共有 URL</span>
+          <input id="join-id" type="text" placeholder="-P-cIY--KC0zvx6rDZZe" required>
+        </label>
+        <button type="submit" class="ghost">開く</button>
+        <p class="error" id="join-error" hidden></p>
+      </form>
+    </div>
+
+    <div class="card" id="recent-card" hidden>
+      <h2>最近使ったルーム</h2>
+      <ul class="recent-list" id="recent-list"></ul>
+    </div>
+  </div>
+</section>
+
+<!-- パスワード入力 ----------------------------------------------------------->
+<section id="screen-lock" class="screen center" hidden>
+  <div class="card narrow">
+    <h1 id="lock-room-name">ルーム</h1>
+    <p class="muted">このルームは 4 桁のパスワードで保護されています。</p>
+    <form id="lock-form" class="stack">
+      <input id="lock-pass" class="pin" type="text" inputmode="numeric" pattern="[0-9]{4}"
+             maxlength="4" autocomplete="off" placeholder="0000" required>
+      <button type="submit" class="primary">入室する</button>
+      <p class="error" id="lock-error" hidden></p>
+    </form>
+    <p><a href="./" class="link">ルーム一覧へ戻る</a></p>
+  </div>
+</section>
+
+<!-- メイン ------------------------------------------------------------------->
+<section id="screen-room" class="screen" hidden>
+  <header class="topbar">
+    <div class="topbar-main">
+      <h1 id="room-name">ルーム</h1>
+      <p class="muted small" id="room-sub"></p>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" class="ghost small" id="btn-members">メンバー</button>
+      <button type="button" class="ghost small" id="btn-share">共有</button>
+      <button type="button" class="ghost small" id="btn-leave">退室</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <nav class="datebar" id="datebar" aria-label="日付"></nav>
+
+    <div class="columns">
+      <div class="col">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="form-title">項目を追加</h2>
+            <button type="button" class="ghost small" id="f-cancel" hidden>編集をやめる</button>
+          </div>
+
+          <form id="item-form" class="stack">
+            <div class="row">
+              <label class="field grow">
+                <span>項目名</span>
+                <input id="f-title" type="text" maxlength="60" placeholder="例：夕食、タクシー代" required>
+              </label>
+              <label class="field">
+                <span>日付</span>
+                <input id="f-date" type="date" required>
+              </label>
+            </div>
+
+            <fieldset class="block">
+              <legend>支払った人</legend>
+              <div class="segmented" id="paymode">
+                <button type="button" data-value="single">1人が立て替え</button>
+                <button type="button" data-value="multi">複数人で支払った</button>
+              </div>
+
+              <div id="pay-single" class="row">
+                <label class="field grow">
+                  <span>立て替えた人</span>
+                  <select id="f-payer"></select>
+                </label>
+                <label class="field">
+                  <span>金額</span>
+                  <input id="f-amount" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                </label>
+              </div>
+
+              <div id="pay-multi" hidden>
+                <p class="hint">それぞれが実際に出した金額を入力してください。</p>
+                <div class="rows" id="payer-rows"></div>
+              </div>
+
+              <div class="total-line">
+                <span>支払い合計</span><b id="pay-total">¥0</b>
+              </div>
+            </fieldset>
+
+            <fieldset class="block">
+              <legend>対象メンバー（この項目を負担する人）</legend>
+              <div class="split-head">
+                <div class="segmented" id="splitmode">
+                  <button type="button" data-value="equal">均等割</button>
+                  <button type="button" data-value="custom">個別に指定</button>
+                </div>
+                <div class="quick">
+                  <button type="button" class="ghost small" id="p-all">全員</button>
+                  <button type="button" class="ghost small" id="p-none">クリア</button>
+                </div>
+              </div>
+              <div class="rows" id="participant-rows"></div>
+              <div class="total-line">
+                <span>負担合計</span><b id="share-total">¥0</b>
+              </div>
+              <p class="warn" id="share-warn" hidden></p>
+            </fieldset>
+
+            <button type="submit" class="primary" id="f-submit">追加する</button>
+            <p class="error" id="form-error" hidden></p>
+          </form>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card">
+          <div class="card-head">
+            <h2>項目一覧</h2>
+            <span class="muted small" id="items-summary"></span>
+          </div>
+          <div id="item-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>精算</h2>
+            <span class="muted small" id="settle-scope"></span>
+          </div>
+          <div id="balance-list"></div>
+          <h3 class="sub">送金のしかた</h3>
+          <div id="transfer-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- メンバー管理 ------------------------------------------------------------->
+<dialog id="dlg-members">
+  <h2>メンバー</h2>
+  <div id="member-admin-list" class="rows"></div>
+  <form id="member-add-form" class="inline">
+    <input id="member-add-name" type="text" maxlength="40" placeholder="メンバー名を追加" required>
+    <button type="submit" class="primary small">追加</button>
+  </form>
+  <div class="dlg-actions">
+    <button type="button" class="ghost" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<!-- 共有 --------------------------------------------------------------------->
+<dialog id="dlg-share">
+  <h2>このルームを共有</h2>
+  <p class="muted">URL とパスワードの両方を相手に伝えてください。</p>
+  <label class="field">
+    <span>共有 URL</span>
+    <div class="inline">
+      <input id="share-url" type="text" readonly>
+      <button type="button" class="ghost" id="share-copy">コピー</button>
+    </div>
+  </label>
+  <label class="field">
+    <span>パスワードを変更する（4桁）</span>
+    <div class="inline">
+      <input id="share-pass" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="0000">
+      <button type="button" class="ghost" id="share-pass-save">変更</button>
+    </div>
+  </label>
+  <p class="hint">パスワードは入室時の簡易的な鍵です。ルーム ID を知られると、
+    技術的な手段でデータを読まれる可能性は残ります。機微な情報は入れないでください。</p>
+  <div class="dlg-actions">
+    <button type="button" class="ghost" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

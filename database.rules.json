@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "rooms": {
+      ".read": false,
+      ".write": false,
+      "$roomId": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['name', 'passwordHash'])",
+        "name":         { ".validate": "newData.isString() && newData.val().length <= 60" },
+        "passwordHash": { ".validate": "newData.isString() && newData.val().length == 64" },
+        "createdAt":    { ".validate": "newData.isNumber()" },
+        "members": {
+          "$memberId": {
+            "name":  { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "order": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "items": {
+          "$itemId": {
+            ".validate": "newData.hasChildren(['title', 'date', 'amount'])",
+            "title":  { ".validate": "newData.isString() && newData.val().length <= 60" },
+            "date":   { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" },
+            "amount": { ".validate": "newData.isNumber()" },
+            "payers": { "$memberId": { ".validate": "newData.isNumber()" } },
+            "shares": { "$memberId": { ".validate": "newData.isNumber()" } },
+            "payMode":   { ".validate": "newData.isString()" },
+            "splitMode": { ".validate": "newData.isString()" },
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "updatedAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
