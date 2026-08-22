@@ -29,7 +29,7 @@ export const firebaseConfig = {
 // provider は登録時に選んだ種類に合わせます（"v3" または "enterprise"）。
 // ---------------------------------------------------------------------------
 export const appCheckConfig = {
-  siteKey: "",
+  siteKey: "6LcOFZMtAAAAAKoT3sZ44L5E9RVgjupc8oj5DTbH",
   provider: "v3"
 };
 
