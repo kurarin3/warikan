@@ -150,8 +150,23 @@
                 <div class="rows" id="payer-rows"></div>
               </div>
 
+              <label class="check">
+                <input id="f-has-change" type="checkbox">
+                <span>おつりを受け取った人がいる</span>
+              </label>
+              <div id="pay-change" hidden>
+                <p class="hint">おつりを受け取った人の欄に金額を入力してください。支払い合計から差し引いた額を割り勘します。</p>
+                <div class="rows" id="change-rows"></div>
+              </div>
+
               <div class="total-line">
                 <span>支払い合計</span><b id="pay-total">¥0</b>
+              </div>
+              <div class="total-line sub" id="change-total-line" hidden>
+                <span>おつり</span><b id="change-total">¥0</b>
+              </div>
+              <div class="total-line sub" id="cost-total-line" hidden>
+                <span>実際の費用</span><b id="cost-total">¥0</b>
               </div>
             </fieldset>
 

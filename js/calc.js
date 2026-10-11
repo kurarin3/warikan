@@ -18,7 +18,11 @@ export function splitEqually(total, memberIds) {
 /**
  * 項目と精算送金から、メンバーごとの収支を集計する。
  *
- *   balance = 立て替えた額 - 負担すべき額 + 精算で渡した額 - 精算で受け取った額
+ *   balance = 立て替えた額 - 受け取ったおつり - 負担すべき額
+ *             + 精算で渡した額 - 精算で受け取った額
+ *
+ * おつりは、支払いの場でいったん出したお金が戻ってきたものなので、受け取った人の
+ * 立て替え額から差し引く（支払っていない人が受け取った場合はその分だけ借りになる）。
  *
  * balance が 0 なら、そのメンバーの精算は済んでいる。
  */
@@ -26,6 +30,7 @@ export function computeBalances(items, memberIds, payments = []) {
   const ids = new Set(memberIds);
   for (const item of items) {
     Object.keys(item.payers || {}).forEach((id) => ids.add(id));
+    Object.keys(item.change || {}).forEach((id) => ids.add(id));
     Object.keys(item.shares || {}).forEach((id) => ids.add(id));
   }
   for (const payment of payments) {
@@ -35,11 +40,12 @@ export function computeBalances(items, memberIds, payments = []) {
 
   const rows = {};
   for (const id of ids) {
-    rows[id] = { id, paid: 0, owed: 0, sentBack: 0, receivedBack: 0, balance: 0 };
+    rows[id] = { id, paid: 0, change: 0, owed: 0, sentBack: 0, receivedBack: 0, balance: 0 };
   }
 
   for (const item of items) {
     for (const [id, amt] of Object.entries(item.payers || {})) rows[id].paid += amt;
+    for (const [id, amt] of Object.entries(item.change || {})) rows[id].change += amt;
     for (const [id, amt] of Object.entries(item.shares || {})) rows[id].owed += amt;
   }
   for (const payment of payments) {
@@ -48,7 +54,7 @@ export function computeBalances(items, memberIds, payments = []) {
   }
 
   for (const row of Object.values(rows)) {
-    row.balance = row.paid - row.owed + row.sentBack - row.receivedBack;
+    row.balance = row.paid - row.change - row.owed + row.sentBack - row.receivedBack;
   }
   return rows;
 }

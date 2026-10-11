@@ -70,6 +70,8 @@ const form = {
   splitMode: "equal",
   singlePayerId: null,
   payerAmounts: {},
+  hasChange: false,
+  changeAmounts: {},
   participants: new Set(),
   shareAmounts: {}
 };
@@ -397,6 +399,8 @@ function resetForm() {
   form.payMode = "single";
   form.splitMode = "equal";
   form.payerAmounts = {};
+  form.hasChange = false;
+  form.changeAmounts = {};
   form.shareAmounts = {};
   form.participants = new Set(state.members.map((m) => m.id));
   form.singlePayerId = state.members[0]?.id ?? null;
@@ -412,9 +416,14 @@ function paidTotal() {
     : sum(form.payerAmounts);
 }
 
+const changeTotal = () => (form.hasChange ? sum(form.changeAmounts) : 0);
+
+/** 割り勘の対象になる額。出したお金からおつりを引いた、実際にかかった費用。 */
+const costTotal = () => paidTotal() - changeTotal();
+
 function currentShares() {
   const ids = [...form.participants];
-  if (form.splitMode === "equal") return splitEqually(paidTotal(), ids);
+  if (form.splitMode === "equal") return splitEqually(costTotal(), ids);
   return Object.fromEntries(ids.map((id) => [id, toInt(form.shareAmounts[id])]));
 }
 
@@ -422,7 +431,7 @@ function currentShares() {
 let formSignature = "";
 const formSig = () => JSON.stringify([
   state.members.map((m) => [m.id, m.name]),
-  form.editingId, form.payMode, form.splitMode, [...form.participants].sort()
+  form.editingId, form.payMode, form.hasChange, form.splitMode, [...form.participants].sort()
 ]);
 
 function renderForm(db) {
@@ -453,6 +462,23 @@ function renderForm(db) {
           value: form.payerAmounts[m.id] ?? "",
           oninput: (event) => {
             form.payerAmounts[m.id] = toInt(event.target.value);
+            refreshTotals();
+          }
+        })))
+  );
+
+  // おつり
+  $("#f-has-change").checked = form.hasChange;
+  $("#pay-change").hidden = !form.hasChange;
+  $("#change-rows").replaceChildren(
+    ...state.members.map((m) =>
+      h("div", { class: "prow" },
+        h("label", {}, h("span", { class: "name" }, m.name)),
+        h("input", {
+          type: "number", min: "0", step: "1", inputMode: "numeric", placeholder: "0",
+          value: form.changeAmounts[m.id] || "",
+          oninput: (event) => {
+            form.changeAmounts[m.id] = toInt(event.target.value);
             refreshTotals();
           }
         })))
@@ -501,20 +527,27 @@ function renderParticipantRows() {
   formSignature = formSig();
 }
 
+/** 負担合計を合わせる相手の呼び名。おつりがあるときは支払い合計とは別の額になる。 */
+const targetLabel = () => (changeTotal() > 0 ? "実際の費用" : "支払い合計");
+
 function refreshTotals() {
-  const total = paidTotal();
+  const total = costTotal();
   const shares = currentShares();
   const shareSum = sum(shares);
 
-  $("#pay-total").textContent = yen(total);
+  $("#pay-total").textContent = yen(paidTotal());
+  $("#change-total").textContent = `-${yen(changeTotal())}`;
+  $("#cost-total").textContent = yen(total);
+  $("#change-total-line").hidden = !form.hasChange;
+  $("#cost-total-line").hidden = !form.hasChange;
   $("#share-total").textContent = yen(shareSum);
 
   const warn = $("#share-warn");
   const diff = total - shareSum;
   if (form.splitMode === "custom" && total > 0 && diff !== 0) {
     warn.textContent = diff > 0
-      ? `${yen(diff)} 足りません（支払い合計と負担合計を一致させてください）`
-      : `${yen(-diff)} 多すぎます（支払い合計と負担合計を一致させてください）`;
+      ? `${yen(diff)} 足りません（${targetLabel()}と負担合計を一致させてください）`
+      : `${yen(-diff)} 多すぎます（${targetLabel()}と負担合計を一致させてください）`;
     warn.hidden = false;
   } else {
     warn.hidden = true;
@@ -543,7 +576,7 @@ function wireRoom(db) {
     form.splitMode = button.dataset.value;
     if (form.splitMode === "custom" && Object.keys(form.shareAmounts).length === 0) {
       // 均等割の結果を初期値として引き継ぐと編集しやすい。
-      Object.assign(form.shareAmounts, splitEqually(paidTotal(), [...form.participants]));
+      Object.assign(form.shareAmounts, splitEqually(costTotal(), [...form.participants]));
     }
     renderForm(db);
   });
@@ -552,6 +585,10 @@ function wireRoom(db) {
     form.singlePayerId = event.target.value;
   });
   $("#f-amount").addEventListener("input", refreshTotals);
+  $("#f-has-change").addEventListener("change", (event) => {
+    form.hasChange = event.target.checked;
+    renderForm(db);
+  });
 
   $("#p-all").addEventListener("click", () => {
     form.participants = new Set(state.members.map((m) => m.id));
@@ -649,7 +686,8 @@ async function submitItem(event, db) {
 
   const title = $("#f-title").value.trim();
   const date = $("#f-date").value;
-  const total = paidTotal();
+  const paid = paidTotal();
+  const total = costTotal();
   const shares = currentShares();
 
   const fail = (message) => {
@@ -659,13 +697,13 @@ async function submitItem(event, db) {
 
   if (!title) return fail("項目名を入力してください。");
   if (!date) return fail("日付を選んでください。");
-  if (total <= 0) return fail("支払い金額を入力してください。");
+  if (paid <= 0) return fail("支払い金額を入力してください。");
   if (form.participants.size === 0) return fail("対象メンバーを 1 人以上選んでください。");
 
   let payers;
   if (form.payMode === "single") {
     if (!form.singlePayerId) return fail("立て替えた人を選んでください。");
-    payers = { [form.singlePayerId]: total };
+    payers = { [form.singlePayerId]: paid };
   } else {
     payers = Object.fromEntries(
       Object.entries(form.payerAmounts)
@@ -675,12 +713,25 @@ async function submitItem(event, db) {
     if (Object.keys(payers).length === 0) return fail("支払った人の金額を入力してください。");
   }
 
+  const change = form.hasChange
+    ? Object.fromEntries(
+        Object.entries(form.changeAmounts)
+          .map(([id, amount]) => [id, toInt(amount)])
+          .filter(([, amount]) => amount !== 0))
+    : {};
+  if (Object.values(change).some((amount) => amount < 0)) {
+    return fail("おつりは 0 以上で入力してください。");
+  }
+  if (total <= 0) return fail("おつりが支払い合計以上になっています。");
+
   if (form.splitMode === "custom" && sum(shares) !== total) {
-    return fail(`負担合計が支払い合計と一致しません（差額 ${yen(total - sum(shares))}）。`);
+    return fail(`負担合計が${targetLabel()}と一致しません（差額 ${yen(total - sum(shares))}）。`);
   }
 
+  // amount は実際にかかった費用（支払い合計 - おつり）。
   const payload = {
     title, date, amount: total, payers, shares,
+    ...(Object.keys(change).length ? { change } : {}),
     payMode: form.payMode, splitMode: form.splitMode
   };
 
@@ -711,13 +762,15 @@ function startEdit(item, db) {
   form.payMode = item.payMode === "multi" ? "multi" : "single";
   form.splitMode = item.splitMode === "custom" ? "custom" : "equal";
   form.payerAmounts = { ...(item.payers || {}) };
+  form.changeAmounts = { ...(item.change || {}) };
+  form.hasChange = Object.keys(form.changeAmounts).length > 0;
   form.shareAmounts = { ...(item.shares || {}) };
   form.participants = new Set(Object.keys(item.shares || {}));
   form.singlePayerId = Object.keys(item.payers || {})[0] ?? state.members[0]?.id ?? null;
 
   $("#f-title").value = item.title;
   $("#f-date").value = item.date;
-  $("#f-amount").value = form.payMode === "single" ? item.amount : "";
+  $("#f-amount").value = form.payMode === "single" ? sum(item.payers) || item.amount : "";
 
   renderAll(db);
   $("#item-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -741,6 +794,9 @@ function renderItems(db) {
     const payerText = Object.entries(item.payers || {})
       .map(([id, amount]) => `${memberName(id)} ${yen(amount)}`)
       .join(" ・ ");
+    const changeText = Object.entries(item.change || {})
+      .map(([id, amount]) => `${memberName(id)} ${yen(amount)}`)
+      .join(" ・ ");
 
     const line = (label, amount) =>
       h("div", { class: "line" }, h("span", {}, label), h("span", {}, yen(amount)));
@@ -750,13 +806,17 @@ function renderItems(db) {
         h("span", { class: "item-title" }, item.title),
         h("span", { class: "item-amount" }, yen(item.amount))),
       h("div", { class: "item-meta" },
-        `${formatDate(item.date)} ・ 立て替え: ${payerText || "—"}`),
+        `${formatDate(item.date)} ・ 立て替え: ${payerText || "—"}${changeText ? ` ・ おつり: ${changeText}` : ""}`),
       h("details", { class: "item-detail-wrap" },
         h("summary", { class: "muted small" },
           `内訳（${Object.keys(item.shares || {}).length}人）`),
         h("div", { class: "item-detail" },
           h("div", { class: "line head" }, h("span", {}, "支払い"), h("span", {}, "")),
           ...Object.entries(item.payers || {}).map(([id, amount]) => line(memberName(id), amount)),
+          ...(changeText
+            ? [h("div", { class: "line head" }, h("span", {}, "おつり"), h("span", {}, "")),
+               ...Object.entries(item.change).map(([id, amount]) => line(memberName(id), amount))]
+            : []),
           h("div", { class: "line head" }, h("span", {}, "負担"), h("span", {}, "")),
           ...Object.entries(item.shares || {}).map(([id, amount]) => line(memberName(id), amount)))),
       h("div", { class: "item-actions" },
@@ -805,7 +865,7 @@ function renderSettlement(db) {
       h("span", { class: "who" }, memberName(row.id)),
       h("span", { class: `amt ${sign}` }, label),
       h("span", { class: "detail" },
-        `支払い ${yen(row.paid)} ・ 負担 ${yen(row.owed)}${settled}`));
+        `支払い ${yen(row.paid)}${row.change ? ` ・ おつり -${yen(row.change)}` : ""} ・ 負担 ${yen(row.owed)}${settled}`));
   }));
 
   const transfers = settle(rows);
@@ -874,6 +934,7 @@ function renderMemberAdmin(db) {
   const usedIds = new Set();
   for (const item of state.items) {
     Object.keys(item.payers || {}).forEach((id) => usedIds.add(id));
+    Object.keys(item.change || {}).forEach((id) => usedIds.add(id));
     Object.keys(item.shares || {}).forEach((id) => usedIds.add(id));
   }
 

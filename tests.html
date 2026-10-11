@@ -85,6 +85,25 @@ eq("送金の内訳", [bal6.d.sentBack, bal6.a.receivedBack, bal6.d.balance], [2
 const bal10 = computeBalances([], ["a","b"], [{from:"a",to:"b",amount:300}]);
 eq("項目なし送金のみ", Object.fromEntries(Object.values(bal10).map(r=>[r.id,r.balance])), {a:300,b:-300});
 
+// --- おつり ---
+// 3600円の会計に a と b が 2000円ずつ出し、おつり 400円を b が受け取った。3人で均等割。
+const items11 = [{ amount: 3600, payers: {a:2000,b:2000}, change: {b:400}, shares: splitEqually(3600,["a","b","c"]) }];
+const bal11 = computeBalances(items11, ["a","b","c"]);
+eq("おつりは受け取った人の立て替えから引かれる",
+   Object.fromEntries(Object.values(bal11).map(r=>[r.id,r.balance])), {a:800,b:400,c:-1200});
+eq("おつりがあっても合計はゼロ", Object.values(bal11).reduce((s,r)=>s+r.balance,0), 0);
+eq("おつりの内訳", [bal11.b.paid, bal11.b.change, bal11.a.change], [2000, 400, 0]);
+
+// 支払っていない人がおつりを受け取った場合は、その分だけ借りが増える
+const bal12 = computeBalances(
+  [{ amount: 3600, payers: {a:4000}, change: {c:400}, shares: splitEqually(3600,["a","b","c"]) }], ["a","b","c"]);
+eq("支払っていない人がおつりを受け取る",
+   Object.fromEntries(Object.values(bal12).map(r=>[r.id,r.balance])), {a:2800,b:-1200,c:-1600});
+eq("おつり込みの送金案", settle(bal12), [{from:"c",to:"a",amount:1600},{from:"b",to:"a",amount:1200}]);
+
+// おつりのない既存の項目はそのまま
+eq("おつりなしは change が 0", bal1.a.change, 0);
+
 eq("yen format", yen(1234567), "¥1,234,567");
 eq("no transfers when settled", settle(computeBalances([{amount:100,payers:{a:100},shares:{a:100}}],["a"])), []);
 

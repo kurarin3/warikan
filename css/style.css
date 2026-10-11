@@ -221,6 +221,11 @@ button.icon.danger:hover { color: var(--minus); }
   color: var(--muted);
 }
 .total-line b { font-size: 1.05rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.total-line.sub { margin-top: 4px; padding-top: 0; border-top: 0; }
+
+.check { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .9rem; cursor: pointer; }
+.check input[type="checkbox"] { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+#pay-change { margin-top: 8px; }
 
 /* --- トップバー ---------------------------------------------------------- */
 .topbar {
