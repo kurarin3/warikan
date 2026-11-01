@@ -93,6 +93,7 @@ code {
   margin-bottom: .8em;
 }
 .card-head h2 { margin: 0; }
+.report-copy { width: 100%; margin-top: 16px; }
 
 .columns { display: grid; grid-template-columns: 1fr; gap: 0 16px; }
 @media (min-width: 900px) {

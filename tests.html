@@ -2,6 +2,8 @@
 <body><pre id="out">running</pre>
 <script type="module">
 import { splitEqually, computeBalances, settle, sum, yen } from "./js/calc.js";
+import { buildReport } from "./js/report.js";
+import { todayStr, formatDate } from "./js/date.js";
 const log = [];
 let failed = 0;
 const norm = (v) => (v && typeof v === "object" && !Array.isArray(v))
@@ -103,6 +105,36 @@ eq("おつり込みの送金案", settle(bal12), [{from:"c",to:"a",amount:1600},
 
 // おつりのない既存の項目はそのまま
 eq("おつりなしは change が 0", bal1.a.change, 0);
+
+// --- レポート ---
+const rMembers = [{id:"a",name:"ゆうき"},{id:"b",name:"さくら"},{id:"c",name:"たける"}];
+const rItems = [
+  {title:"夕食", date:"2026-11-01", amount:9000, payers:{a:9000}, shares:splitEqually(9000,["a","b","c"])},
+  {title:"レンタカーとガソリン代", date:"2026-11-02", amount:1000, payers:{b:1000}, shares:splitEqually(1000,["a","b","c"])}
+];
+const report = (extra) => buildReport({ roomName:"旅行", scopeLabel:"全期間", singleDate:false,
+  members:rMembers, items:rItems, payments:[], ...extra });
+const textWidth = (s) => [...s].reduce((w, ch) => w + (/[\x20-\x7e]/.test(ch) ? 0.5 : 1), 0);
+eq("レポートは 1 行が全角 16 文字以内",
+   report({}).split("\n").filter((l) => textWidth(l) > 16), []);
+eq("レポートに残りの送金が載る", report({}).includes("さくら→ゆうき"), true);
+eq("均等割で割り切れる項目は「全員 各」", report({}).includes("負担 全員 各¥3,000"), true);
+eq("端数が出る項目は一人ずつ", report({}).includes("　　ゆうき ¥334"), true);
+eq("全期間は日付の見出しが付く", report({}).includes("［11/1(日)］"), true);
+eq("1 日分は日付の見出しを省く", report({ singleDate:true }).includes("［"), false);
+eq("URL は末尾に付く", report({ url:"https://x/?room=r" }).endsWith("https://x/?room=r"), true);
+const doneReport = report({ payments: settle(computeBalances(rItems, ["a","b","c"])) });
+eq("精算完了と表示する", doneReport.includes("✅ 精算完了"), true);
+eq("精算完了なら送金済みは省く", doneReport.includes("■送金済み"), false);
+
+// --- 日付の境界（朝 6 時） ---
+eq("夜はその日", todayStr(new Date(2026, 10, 1, 23, 30)), "2026-11-01");
+eq("深夜 0 時台は前日", todayStr(new Date(2026, 10, 2, 0, 10)), "2026-11-01");
+eq("5:59 は前日", todayStr(new Date(2026, 10, 2, 5, 59, 59)), "2026-11-01");
+eq("6:00 からその日", todayStr(new Date(2026, 10, 2, 6, 0)), "2026-11-02");
+eq("月をまたぐ", todayStr(new Date(2026, 11, 1, 3, 0)), "2026-11-30");
+eq("年をまたぐ", todayStr(new Date(2027, 0, 1, 3, 0)), "2026-12-31");
+eq("日付の表示", formatDate("2026-11-01"), "11/1(日)");
 
 eq("yen format", yen(1234567), "¥1,234,567");
 eq("no transfers when settled", settle(computeBalances([{amount:100,payers:{a:100},shares:{a:100}}],["a"])), []);

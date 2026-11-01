@@ -1,5 +1,7 @@
 import { firebaseConfig, isConfigured } from "./config.js";
 import { splitEqually, computeBalances, settle, sum, yen } from "./calc.js";
+import { buildReport } from "./report.js";
+import { todayStr, formatDate } from "./date.js";
 import * as local from "./storage.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -29,19 +31,6 @@ const toInt = (value) => {
   const n = Math.round(Number(value));
   return Number.isFinite(n) ? n : 0;
 };
-
-const todayStr = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
-function formatDate(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()];
-  return `${m}/${d}(${wd})`;
-}
 
 let toastTimer;
 function toast(message) {
@@ -634,6 +623,8 @@ function wireRoom(db) {
     }
   });
 
+  $("#btn-report").addEventListener("click", copyReport);
+
   $("#btn-add-payment").addEventListener("click", () => openPaymentDialog(db));
 
   $("#payment-form").addEventListener("submit", async (event) => {
@@ -673,10 +664,37 @@ function wireRoom(db) {
   });
 }
 
+const roomUrl = () =>
+  `${location.origin}${location.pathname}?room=${encodeURIComponent(state.roomId)}`;
+
 function openShareDialog() {
-  $("#share-url").value =
-    `${location.origin}${location.pathname}?room=${encodeURIComponent(state.roomId)}`;
+  $("#share-url").value = roomUrl();
   $("#dlg-share").showModal();
+}
+
+/** 日付バーで選んでいる範囲の精算結果を、LINE に貼れるテキストにしてコピーする。 */
+async function copyReport() {
+  const items = visibleItems();
+  const payments = visiblePayments();
+  if (!items.length && !payments.length) {
+    toast("レポートにする項目がありません");
+    return;
+  }
+  const text = buildReport({
+    roomName: state.roomName,
+    scopeLabel: state.selectedDate === ALL ? "全期間" : formatDate(state.selectedDate),
+    singleDate: state.selectedDate !== ALL,
+    members: state.members,
+    items,
+    payments,
+    url: roomUrl()
+  });
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("レポートをコピーしました");
+  } catch {
+    toast("コピーできませんでした");
+  }
 }
 
 async function submitItem(event, db) {
